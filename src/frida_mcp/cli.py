@@ -171,7 +171,7 @@ def add_remote_device(
             "address": address,
         }
     except Exception as e:
-        raise ValueError(f"Failed to add remote device at {host}:{port}: {str(e)}") from e
+        raise ValueError(f"Failed to add remote device at {_format_address(host, port)}: {str(e)}") from e
 
 
 @mcp.tool()
@@ -190,7 +190,7 @@ def remove_remote_device(
         manager.remove_remote_device(address)
         return {"success": True, "address": address}
     except Exception as e:
-        raise ValueError(f"Failed to remove remote device at {host}:{port}: {str(e)}") from e
+        raise ValueError(f"Failed to remove remote device at {_format_address(host, port)}: {str(e)}") from e
 
 
 @mcp.tool()
