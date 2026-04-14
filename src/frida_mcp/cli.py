@@ -7,6 +7,7 @@ It sets up a basic Frida MCP server with STDIO transport for Claude to communica
 """
 
 import sys
+import ipaddress
 import frida
 from mcp.server.fastmcp import FastMCP, Context
 from typing import Dict, List, Optional, Any, Union
@@ -117,6 +118,79 @@ def get_local_device() -> Dict[str, Any]:
         }
     except frida.InvalidArgumentError: # Or other relevant Frida exceptions
         raise ValueError("No local device found or error accessing it.")
+
+
+def _format_address(host: str, port: int) -> str:
+    """Format a host:port address string, correctly bracketing IPv6 addresses."""
+    bare = host.strip("[]")
+    try:
+        addr = ipaddress.ip_address(bare)
+        if isinstance(addr, ipaddress.IPv6Address):
+            return f"[{bare}]:{port}"
+    except ValueError:
+        pass
+    return f"{bare}:{port}"
+
+
+@mcp.tool()
+def add_remote_device(
+    host: str = Field(description="The hostname or IP address of the remote Frida server (e.g. '192.168.1.100' or 'myhost')."),
+    port: int = Field(default=27042, description="The port of the remote Frida server. Defaults to 27042."),
+    certificate: Optional[str] = Field(default=None, description="Optional TLS certificate to use for the connection."),
+    origin: Optional[str] = Field(default=None, description="Optional origin header to use for the connection."),
+    token: Optional[str] = Field(default=None, description="Optional authentication token for the remote device."),
+    keepalive_interval: Optional[int] = Field(default=None, description="Optional keepalive interval in seconds.")
+) -> Dict[str, Any]:
+    """Connect to a remote Frida server by hostname and port.
+
+    Once added, the remote device will appear in enumerate_devices() and can be
+    referenced by its device_id in all other tools.
+
+    Returns:
+        Information about the remote device including its device_id
+    """
+    try:
+        address = _format_address(host, port)
+        manager = frida.get_device_manager()
+
+        kwargs: Dict[str, Any] = {}
+        if certificate is not None:
+            kwargs["certificate"] = certificate
+        if origin is not None:
+            kwargs["origin"] = origin
+        if token is not None:
+            kwargs["token"] = token
+        if keepalive_interval is not None:
+            kwargs["keepalive_interval"] = keepalive_interval
+
+        device = manager.add_remote_device(address, **kwargs)
+        return {
+            "id": device.id,
+            "name": device.name,
+            "type": device.type,
+            "address": address,
+        }
+    except Exception as e:
+        raise ValueError(f"Failed to add remote device at {_format_address(host, port)}: {str(e)}") from e
+
+
+@mcp.tool()
+def remove_remote_device(
+    host: str = Field(description="The hostname or IP address of the remote Frida server to disconnect from."),
+    port: int = Field(default=27042, description="The port of the remote Frida server. Defaults to 27042.")
+) -> Dict[str, Any]:
+    """Disconnect from a previously added remote Frida server.
+
+    Returns:
+        Status information
+    """
+    try:
+        address = _format_address(host, port)
+        manager = frida.get_device_manager()
+        manager.remove_remote_device(address)
+        return {"success": True, "address": address}
+    except Exception as e:
+        raise ValueError(f"Failed to remove remote device at {_format_address(host, port)}: {str(e)}") from e
 
 
 @mcp.tool()
