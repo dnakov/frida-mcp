@@ -7,6 +7,7 @@ It sets up a basic Frida MCP server with STDIO transport for Claude to communica
 """
 
 import sys
+import ipaddress
 import frida
 from mcp.server.fastmcp import FastMCP, Context
 from typing import Dict, List, Optional, Any, Union
@@ -119,6 +120,18 @@ def get_local_device() -> Dict[str, Any]:
         raise ValueError("No local device found or error accessing it.")
 
 
+def _format_address(host: str, port: int) -> str:
+    """Format a host:port address string, correctly bracketing IPv6 addresses."""
+    bare = host.strip("[]")
+    try:
+        addr = ipaddress.ip_address(bare)
+        if isinstance(addr, ipaddress.IPv6Address):
+            return f"[{bare}]:{port}"
+    except ValueError:
+        pass
+    return f"{bare}:{port}"
+
+
 @mcp.tool()
 def add_remote_device(
     host: str = Field(description="The hostname or IP address of the remote Frida server (e.g. '192.168.1.100' or 'myhost')."),
@@ -137,7 +150,7 @@ def add_remote_device(
         Information about the remote device including its device_id
     """
     try:
-        address = f"{host}:{port}"
+        address = _format_address(host, port)
         manager = frida.get_device_manager()
 
         kwargs: Dict[str, Any] = {}
@@ -158,7 +171,7 @@ def add_remote_device(
             "address": address,
         }
     except Exception as e:
-        raise ValueError(f"Failed to add remote device at {host}:{port}: {str(e)}")
+        raise ValueError(f"Failed to add remote device at {host}:{port}: {str(e)}") from e
 
 
 @mcp.tool()
@@ -172,7 +185,7 @@ def remove_remote_device(
         Status information
     """
     try:
-        address = f"{host}:{port}"
+        address = _format_address(host, port)
         manager = frida.get_device_manager()
         manager.remove_remote_device(address)
         return {"success": True, "address": address}
